@@ -6,6 +6,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.os.Bundle;
 import android.os.Vibrator;
@@ -71,6 +72,8 @@ public class GCMIntentService extends IntentService implements MediaPlayer.OnCom
 
     private void playSound(){
         if (mPlayer == null) {
+            AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            am.setStreamVolume(AudioManager.STREAM_MUSIC, (int) (am.getStreamMaxVolume(AudioManager.STREAM_MUSIC) * 0.8), 0);
             mPlayer = MediaPlayer.create(this, R.raw.sound);
         }
         mPlayer.setOnCompletionListener(this);
