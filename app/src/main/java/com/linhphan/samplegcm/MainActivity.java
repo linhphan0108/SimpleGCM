@@ -4,12 +4,12 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.AsyncTask;
 import android.os.Handler;
+import android.os.Message;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
-import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -23,18 +23,18 @@ import java.io.IOException;
 /**
  * tool for simulating a test server: https://chrome.google.com/webstore/detail/dhc-resthttp-api-client/aejoelaoggembcahagimdiliamlcdmfm
  */
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements Handler.Callback{
 
     // Resgistration Id from GCM
     private static final String PREF_GCM_REG_ID = "PREF_GCM_REG_ID";
     private SharedPreferences prefs;
     // Your project number and web server url. Please change below.
-    private static final String GCM_SENDER_ID = "480450616857";//project number
+    private static final String GCM_SENDER_ID = "696125427563";//project number
     private static final String WEB_SERVER_URL = "YOUR_WER_SERVER_URL";
 
     private GoogleCloudMessaging gcm;
-    private Button mBtnRegistration;
-    private TextView mTxtRegistrationId;
+
+    Handler handler = new Handler(this);
 
     private static final int ACTION_PLAY_SERVICES_DIALOG = 100;
     protected static final int MSG_REGISTER_WITH_GCM = 101;
@@ -48,27 +48,57 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        mBtnRegistration = (Button) findViewById(R.id.register_gcmserver);
-        mTxtRegistrationId = (TextView) findViewById(R.id.regId);
-        mBtnRegistration.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                // Check device for Play Services APK.
-                if (isGoogelPlayInstalled()) {
-                    gcm = GoogleCloudMessaging.getInstance(getApplicationContext());
+        // the app is launched from the notification system
+        // extract the message, then show it on screen
+        if (getIntent().getExtras() != null){
+            String message = getIntent().getStringExtra(GCMIntentService.ARG_MESSAGE);
+            TextView txtMessage = (TextView) findViewById(R.id.txt_message);
+            txtMessage.setText(message);
+        }
 
-                    // Read saved registration id from shared preferences.
-                    gcmRegId = getSharedPreferences().getString(PREF_GCM_REG_ID, "");
-                    Log.e(getClass().getName(), "registration id: "+ gcmRegId);
-                    if (TextUtils.isEmpty(gcmRegId)) {
-                        handler.sendEmptyMessage(MSG_REGISTER_WITH_GCM);
-                    }
-                }
+        // the app is launched by launcher
+        // Check device for Play Services APK.
+        if ("android.intent.action.MAIN".equals(getIntent().getAction()) && isGooglePlayInstalled()) {
+            gcm = GoogleCloudMessaging.getInstance(getApplicationContext());
+
+            // Read saved registration id from shared preferences.
+            gcmRegId = getSharedPreferences().getString(PREF_GCM_REG_ID, "");
+            Log.e(getClass().getName(), "registration id: "+ gcmRegId);
+            if (TextUtils.isEmpty(gcmRegId)) {
+                handler.sendEmptyMessage(MSG_REGISTER_WITH_GCM);
+
+            }else{
+                finish();
             }
-        });
+        }
     }
 
-    private boolean isGoogelPlayInstalled() {
+    @Override
+    public boolean handleMessage(Message msg) {
+        switch (msg.what) {
+            case MSG_REGISTER_WITH_GCM:
+                new GCMRegistrationTask().execute();
+                break;
+            case MSG_REGISTER_WEB_SERVER:
+                //send sender id to our server
+//                    new WebServerRegistrationTask().execute();
+                finish();
+
+                break;
+            case MSG_REGISTER_WEB_SERVER_SUCCESS:
+                Toast.makeText(getApplicationContext(),
+                        "registered with web server", Toast.LENGTH_LONG).show();
+                break;
+            case MSG_REGISTER_WEB_SERVER_FAILURE:
+                Toast.makeText(getApplicationContext(),
+                        "registration with web server failed",
+                        Toast.LENGTH_LONG).show();
+                break;
+        }
+        return false;
+    }
+
+    private boolean isGooglePlayInstalled() {
         int resultCode = GooglePlayServicesUtil.isGooglePlayServicesAvailable(this);
         if (resultCode != ConnectionResult.SUCCESS){
             if (GooglePlayServicesUtil.isUserRecoverableError(resultCode)){
@@ -82,7 +112,7 @@ public class MainActivity extends AppCompatActivity {
         return true;
     }
 
-    private SharedPreferences getSharedPreferences() {
+    private synchronized SharedPreferences getSharedPreferences() {
         if (prefs == null) {
             prefs = getApplicationContext().getSharedPreferences(
                     "AndroidSRCDemo", Context.MODE_PRIVATE);
@@ -90,35 +120,11 @@ public class MainActivity extends AppCompatActivity {
         return prefs;
     }
 
-    public void saveInSharedPref(String result) {
-        // TODO Auto-generated method stub
+    public synchronized void saveInSharedPref(String result) {
         SharedPreferences.Editor editor = getSharedPreferences().edit();
         editor.putString(PREF_GCM_REG_ID, result);
         editor.apply();
     }
-
-    Handler handler = new Handler() {
-        public void handleMessage(android.os.Message msg) {
-            switch (msg.what) {
-                case MSG_REGISTER_WITH_GCM:
-                    new GCMRegistrationTask().execute();
-                    break;
-                case MSG_REGISTER_WEB_SERVER:
-                    //send sender id to our server
-//                    new WebServerRegistrationTask().execute();
-                    break;
-                case MSG_REGISTER_WEB_SERVER_SUCCESS:
-                    Toast.makeText(getApplicationContext(),
-                            "registered with web server", Toast.LENGTH_LONG).show();
-                    break;
-                case MSG_REGISTER_WEB_SERVER_FAILURE:
-                    Toast.makeText(getApplicationContext(),
-                            "registration with web server failed",
-                            Toast.LENGTH_LONG).show();
-                    break;
-            }
-        }
-    };
 
     /**
      * registering sender id to GCM server.
@@ -127,7 +133,7 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         protected String doInBackground(Void... params) {
-            if (gcm == null && isGoogelPlayInstalled()){
+            if (gcm == null && isGooglePlayInstalled()){
                 gcm = GoogleCloudMessaging.getInstance(getApplicationContext());
             }
 
@@ -145,7 +151,7 @@ public class MainActivity extends AppCompatActivity {
         protected void onPostExecute(String s) {
             if (s != null){
                 Toast.makeText(getApplicationContext(), "registered with GCM", Toast.LENGTH_LONG).show();
-                mTxtRegistrationId.setText(s);
+//                mTxtMessage.setText(s);
                 saveInSharedPref(s);
                 Log.e(getClass().getName(), "registration id: "+ s);
                 handler.sendEmptyMessage(MSG_REGISTER_WEB_SERVER);
